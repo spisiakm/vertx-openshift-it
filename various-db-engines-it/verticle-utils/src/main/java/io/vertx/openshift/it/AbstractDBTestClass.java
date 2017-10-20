@@ -3,6 +3,7 @@ package io.vertx.openshift.it;
 import com.jayway.restassured.http.ContentType;
 import com.jayway.restassured.response.Response;
 import com.jayway.restassured.specification.RequestSpecification;
+import io.fabric8.kubernetes.api.KubernetesHelper;
 import io.fabric8.kubernetes.api.model.Pod;
 import io.fabric8.kubernetes.api.model.PodList;
 import io.fabric8.kubernetes.api.model.PodStatus;
@@ -29,36 +30,73 @@ public abstract class AbstractDBTestClass extends AbstractTestClass {
 
   public static final String API_LIST_ROUTE = "/api/vegetables/";
   public static final String DB_NAME = "db";
-  public static final int WAIT = 30;
+  public static final int WAIT = 10;
+  public static final int WAIT_CYCLES = 10;
+  private String dump;
 
-
+  //TODO DB is empty after scale down DB
   @Test
-  public void restartDBTest () {
+  public void restartDBTest() throws Exception {
     System.out.println("Start DB restart test");
     shutDownDB();
+    TimeUnit.SECONDS.sleep(WAIT);
     startDB();
+    awaitUntilPodIsReady(client,DB_NAME);
+    TimeUnit.SECONDS.sleep(WAIT);
     CRUDTest();
   }
 
+
   @Test
-  public void runDBAfterDeployAppTest () throws IOException, InterruptedException {
+  @Ignore
+  public void runDBAfterDeployAppTest () throws Exception {
+    System.out.println("Start test run DB after deploy app");
     cleanup();
+    System.out.println("App was deleted!");
     shutDownDB();
+    System.out.println("DB was scaled to 0 pod!");
     deploymentAssistant.deployApplication();
+    System.out.println("Deploy app and wait " + WAIT + " seconds when app is ready");
     TimeUnit.SECONDS.sleep(WAIT);
+    System.out.println("DB was scaled to 1 pod! and wait");
     startDB();
-    deploymentAssistant.awaitApplicationReadinessOrFail();
+    for (int waitCycle = 0; waitCycle<WAIT_CYCLES;waitCycle++){
+      if( get("/healthcheck").statusCode() == 200){
+        break;
+      }
+      TimeUnit.SECONDS.sleep(WAIT);
+    }
     ensureThat("Test if app is fully deployed", () -> get("/healthcheck").then().assertThat().statusCode(200));
     //Test if app is connected to DB
     CRUDTest();
   }
 
-  private void shutDownDB() {
+  private void shutDownDB() throws Exception {
+    dumpDB();
     scaleDB(0);
   }
+  private void dumpDB () throws Exception {
+    this.dump = OC.execute("exec", "-p", getPodId(DB_NAME) , "--", "/opt/rh/rh-mysql57/root/usr/bin/mysqldump", "-u", "vertx", "-ppassword", "--all-databases");
+  }
 
-  private void startDB() {
+  private void startDB() throws Exception {
     scaleDB(1);
+    TimeUnit.SECONDS.sleep(WAIT);
+    restoreDB();
+  }
+
+  private void restoreDB () throws Exception {
+    OC.execute("exec", "-p", getPodId(DB_NAME) , "--", "echo", "\"" + this.dump + "\" >&2", "|","/opt/rh/rh-mysql57/root/usr/bin/mysql", "-u", "vertx", "-ppassword");
+  }
+
+  private String getPodId (String name) throws Exception {
+    for (Pod pod : client.pods().list().getItems()){
+      String podName = name(pod);
+      if (podName.startsWith(name) && !podName.endsWith("-build")) {
+        return podName;
+      }
+    }
+    throw new Exception("Pod " + name + " doesn\'t exist");
   }
 
   private void scaleDB (int replicas) {
@@ -98,7 +136,6 @@ public abstract class AbstractDBTestClass extends AbstractTestClass {
   public Response createItem (String name) {
     return setRequestJSONBody(new JSONObject().put("name",name)).post(API_LIST_ROUTE);
   }
-
   public Response updateItem (int id ,JSONObject body) {
     return  setRequestJSONBody(body).put(API_LIST_ROUTE+id);
   }
