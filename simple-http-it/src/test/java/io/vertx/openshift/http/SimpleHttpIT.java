@@ -12,8 +12,8 @@ import static io.fabric8.kubernetes.assertions.Assertions.assertThat;
 import static io.vertx.it.openshift.utils.Ensure.ensureThat;
 import static io.vertx.it.openshift.utils.Kube.setReplicasAndWait;
 import static io.vertx.it.openshift.utils.Kube.sleep;
+import static okhttp3.ws.WebSocket.TEXT;
 
-import okio.ByteString;
 import org.junit.BeforeClass;
 import org.junit.Test;
 
@@ -29,12 +29,17 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import io.vertx.it.openshift.utils.AbstractTestClass;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
-import okhttp3.WebSocket;
-import okhttp3.WebSocketListener;
+import okhttp3.RequestBody;
+import okhttp3.ResponseBody;
+import okhttp3.ws.WebSocket;
+import okhttp3.ws.WebSocketCall;
+import okhttp3.ws.WebSocketListener;
+import okio.Buffer;
 
 
 /**
@@ -42,11 +47,14 @@ import okhttp3.WebSocketListener;
  */
 public class SimpleHttpIT extends AbstractTestClass {
 
+
+
   @BeforeClass
   public static void initialize() throws IOException {
     deployAndAwaitStartWithRoute();
     await("route should be eventually served").atMost(5, TimeUnit.MINUTES).catchUncaughtExceptions().until(() -> get().getStatusCode() < 500);
   }
+
 
   @Test
   public void stabilityTest() throws Exception {
@@ -97,15 +105,13 @@ public class SimpleHttpIT extends AbstractTestClass {
 
     ensureThat("the HTTP server can write into a file", () ->
       get("/write"))
-      .then()
-      .assertThat()
-      .statusCode(200);
+        .then()
+      .assertThat().statusCode(200);
 
     ensureThat("the written file can be read", () ->
       get("/tmp"))
-      .then()
-      .assertThat()
-      .statusCode(200)
+        .then()
+        .assertThat().statusCode(200)
       .body(containsString("hello"));
   }
 
@@ -120,39 +126,41 @@ public class SimpleHttpIT extends AbstractTestClass {
         .url(RestAssured.baseURI + "/ws")
         .build();
 
+      AtomicBoolean close = new AtomicBoolean();
       List<String> messages = new ArrayList<>();
-
-      WebSocketListener webSocketListener = new WebSocketListener() {
+      WebSocketCall.create(client, request).enqueue(new WebSocketListener() {
         @Override
         public void onOpen(WebSocket webSocket, okhttp3.Response response) {
-          webSocket.send("Hello...");
-          webSocket.send("...World!");
-          webSocket.close(1000, "Goodbye, World!");
+          try {
+            webSocket.sendMessage(RequestBody.create(TEXT, "Hello..."));
+            webSocket.sendMessage(RequestBody.create(TEXT, "...World!"));
+            webSocket.close(1000, "Goodbye, World!");
+          } catch (IOException e) {
+            e.printStackTrace();
+          }
+
         }
 
         @Override
-        public void onFailure(WebSocket webSocket, Throwable t, okhttp3.Response response) {
-          System.err.println("An error has occured: " + t.getMessage());
-          t.printStackTrace();
+        public void onFailure(IOException e, okhttp3.Response response) {
+
         }
 
         @Override
-        public void onMessage(WebSocket webSocket, String text) {
-          messages.add(text);
+        public void onMessage(ResponseBody responseBody) throws IOException {
+          messages.add(responseBody.string());
         }
 
         @Override
-        public void onMessage(WebSocket webSocket, ByteString bytes) {
-          messages.add(bytes.utf8());
+        public void onPong(Buffer buffer) {
+
         }
 
         @Override
-        public void onClosing(WebSocket webSocket, int code, String reason) {
-          webSocket.close(1000, null);
+        public void onClose(int i, String s) {
+          close.set(true);
         }
-      };
-
-      client.newWebSocket(request, webSocketListener);
+      });
 
       await().until(() -> messages.size() >= 2);
       Assertions.assertThat(messages).hasSize(2)
@@ -195,4 +203,8 @@ public class SimpleHttpIT extends AbstractTestClass {
     });
 
   }
+
+
+
+
 }
