@@ -32,9 +32,9 @@ public class ClientCreationTest implements Handler<RoutingContext> {
   public void handle(RoutingContext rc) {
     vertx.<PGPoolingDataSource>executeBlocking(fut -> {
       PGPoolingDataSource dataSource = new PGPoolingDataSource();
-      dataSource.setUrl(config.getString("url"));
-      dataSource.setUser(config.getString("user"));
-      dataSource.setPassword(config.getString("password"));
+      dataSource.setUrl(config.getString("jdbcUrl"));
+      dataSource.setUser(config.getString("principal"));
+      dataSource.setPassword(config.getString("credential"));
       try {
         dataSource.initialize();
         fut.complete(dataSource);
