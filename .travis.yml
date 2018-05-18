@@ -3,6 +3,7 @@ install:
   - mvn clean install -N -V
   - mvn clean install -f vertx-it-utils/pom.xml
 before_script:
+  - export PATH=$PATH:$(pwd)
   - chmod +x openshift-init.sh
   - chmod +x run-the-tests.sh
   - ./openshift-init.sh
