@@ -88,7 +88,6 @@ public class MyMainVerticle extends AbstractVerticle {
       });
   }
 
-
   private void init(RoutingContext routingContext) {
     jdbcClient.getConnection(x -> {
       if (x.failed()) {

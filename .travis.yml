@@ -1,3 +1,7 @@
 language: java
-install: mvn clean -pl \!various-db-engines-it/db-it/oracle-it install -DskipTests -V
-script: true
+install:
+  - mvn clean install -N -V
+  - mvn clean install -f vertx-it-utils/pom.xml
+before_script: ./openshift-init.sh
+script: ./run-the-tests.sh
+after_script: ./oc logout
