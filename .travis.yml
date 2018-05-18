@@ -2,6 +2,9 @@ language: java
 install:
   - mvn clean install -N -V
   - mvn clean install -f vertx-it-utils/pom.xml
-before_script: ./openshift-init.sh
+before_script:
+  - chmod +x openshift-init.sh
+  - chmod +x run-the-tests.sh
+  - ./openshift-init.sh
 script: ./run-the-tests.sh
 after_script: ./oc logout
