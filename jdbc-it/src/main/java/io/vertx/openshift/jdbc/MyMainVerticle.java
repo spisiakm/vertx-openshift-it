@@ -37,8 +37,6 @@ public class MyMainVerticle extends AbstractVerticle {
     router.route("/").handler(rc -> rc.response().end("OK"));
     router.route("/init").handler(this::init);
 
-    /* === Add tests here === */
-
     TextQueryTest textQueryTest = new TextQueryTest(jdbcClient);
     router.route(textQueryTest.getPath()).handler(textQueryTest);
 
@@ -74,8 +72,6 @@ public class MyMainVerticle extends AbstractVerticle {
 
     ClientCreationTest clientCreationTest = new ClientCreationTest(vertx, config);
     router.route(clientCreationTest.getPath()).handler(clientCreationTest);
-
-    /* === */
 
     vertx.createHttpServer(new HttpServerOptions().setPort(8080))
       .requestHandler(router::accept)
